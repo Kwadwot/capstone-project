@@ -54,7 +54,7 @@ The project conducts a comprehensive hyperparameter sweep over α ∈ {0.001, 0.
 
 ### Option 1: Google Colab (Recommended for first-time users)
 
-1. Click here to open in Colab: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/YOUR_USERNAME/YOUR_REPO/blob/main/Project_PT_Part2_Debiasing_Kaggle.ipynb)
+1. Click here to open in Colab: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Kwadwot/capstone-project/blob/main/Project_PT_Part2_Debiasing_Kaggle.ipynb)
 
 2. The notebook will handle environment setup automatically:
    - Install dependencies
