@@ -1,0 +1,475 @@
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[margin=0.75in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{authblk}
+\usepackage{caption}
+
+\setlength{\columnsep}{0.25in}
+\setcounter{secnumdepth}{3}
+
+\title{\vspace{-2em}Mitigating Bias in Facial Recognition Systems:\\
+A Corrected Replication of DB-VAE on UTKFace and Tiny ImageNet}
+
+\author{Kwadwo Twumasi \\ CUNY Lehman College \\ Mentor: Professor Liang Zhao}
+\date{}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+{\normalsize
+\noindent
+As machine learning-based systems become more prevalent, it is important to examine methods to mitigate bias within these systems, especially bias against underrepresented segments of society in training data.
+In this research project, our goal is to evaluate the generalization and applicability of the algorithmic bias mitigation approach designed by MIT researchers (Amini et al., 2019), which combines a variational autoencoder (VAE) with a binary classification task to learn latent features and adaptively re-weight training examples by their rarity in the learned latent space, controlled by a debiasing hyperparameter $\alpha$.
+To examine how well the Debiasing Variational Autoencoder (DB-VAE) algorithm generalizes across dataset compositions, we replicate and extend this method on a different dataset combination: UTKFace (positives) and Tiny ImageNet (negatives), evaluated across a 10-group race~$\times$~gender held-out split.
+In doing so, we identify and correct a loss-function bug in the widely used MIT 6.S191 Lab~2 template that swaps the face-indicator factor between the classification and VAE terms, zeroing out the classification gradient on non-face training samples.
+We then conduct a comprehensive $\alpha$-sweep over $\{0.001, 0.01, 0.05, 0.1, \infty\}$ across three random seeds.
+Despite the corrected formulation, the baseline classifier achieves $\mathbb{E}[\mathcal{A}] = 0.9982$ across all ten groups, and the $\alpha$-sweep produces no measurable change in either mean accuracy or cross-group variance.
+We interpret this finding as a characterization of the regime in which latent-density resampling has headroom to act and in which it does not.
+This suggests that a class-balanced training pool of cleanly-cropped faces leaves minimal opportunity for the debiasing intervention to improve upon the baseline.
+}
+    \end{abstract}
+
+% =====================================================================
+\section{Introduction}
+% =====================================================================
+
+Machine learning systems are increasingly used in consequential
+decisions~\cite{klare2012face}, and a recurring failure mode is that they
+perform worse on demographic groups underrepresented in their training
+data. Facial detection is one of the most studied instances of this
+failure: commercial systems have been shown to misclassify darker-skinned
+women at substantially higher rates than lighter-skinned
+men~\cite{buolamwini2018gendershades}, and academic benchmarks now exist
+specifically to surface such disparities.
+
+A natural mitigation is to up-weight training examples whose features are
+rare in the training set, so that the gradient signal during training is
+spread more evenly across the latent space of the positive class.
+The Debiasing Variational Autoencoder of Amini et
+al.~\cite{amini2019dbvae} (DB-VAE) implements this idea end-to-end: a
+single network simultaneously learns the binary classification task and an
+unsupervised variational latent representation of the positive class, and
+the inverse density of each training example in that latent space is used
+as its sample weight at the next epoch.
+The strength of the intervention is
+controlled by a single smoothing hyperparameter~$\alpha$: small~$\alpha$
+pushes the sampled distribution toward uniformity over the latent space,
+while~$\alpha \to \infty$ reverts to uniform sampling over the original
+training set.
+
+The original DB-VAE paper demonstrates the method on CelebA and ImageNet,
+evaluated on the Pilot Parliaments Benchmark (PPB)~\cite{buolamwini2018gendershades}
+across four demographic bins (lighter/darker skin, male/female), and
+reports that decreasing~$\alpha$ both increases the mean accuracy and decreases
+its cross-group variance. This work asks a complementary question: does the
+DB-VAE mechanism generalize to a different dataset combination, and how
+does it behave on a finer-grained demographic split?
+
+We make the following contributions:
+\begin{enumerate}
+    \item \textbf{Methodological.} We identify a loss-function bug in the
+    MIT 6.S191 Lab~2 PyTorch template, widely used as the starting point
+    for DB-VAE re-implementations. The bug swaps a face-indicator factor
+    between the classification and VAE terms, zeroing out classification
+    loss on non-face samples and degenerating the trained model into a
+    yes-face oracle. We give a one-line correction and a diagnostic
+    procedure that detects failure in a single forward pass.
+    \item \textbf{Empirical.} We replicate the DB-VAE architecture and
+    training procedure on UTKFace~\cite{zhang2017utkface} as the positive
+    class and Tiny ImageNet~\cite{le2015tinyimagenet} as the negative
+    class, with a 10-group race~$\times$~gender evaluation split
+    (5~UTKFace race categories~$\times$~2 genders, 200 held-out faces per
+    group) that subsumes the standard 4-group skin-tone~$\times$~gender
+    scheme.
+    \item \textbf{Negative result.} On this dataset combination, the
+    corrected baseline classifier achieves $\mathbb{E}[\mathcal{A}] =
+    0.9982$ across all ten groups, and an $\alpha$-sweep matching the
+    grid used by Amini et al.\ produces no measurable improvement over
+    the no-debiasing baseline. We argue this outcome is itself diagnostic:
+    the DB-VAE intervention can only act on headroom that exists in the
+    baseline, and a class-balanced training pool of cleanly-cropped faces
+    leaves essentially none.
+\end{enumerate}
+
+% =====================================================================
+\section{Related Work}
+% =====================================================================
+
+DB-VAE belongs to the in-processing group of fairness interventions, which operate during model training rather than modifying the data beforehand or post-processing model outputs.
+
+\paragraph{Resampling for class imbalance.}
+Naive oversampling of a minority class~\cite{more2016survey} addresses imbalance \emph{across} classes but is silent on imbalance \emph{within} a class -- the under-representation of, say, darker-skinned faces inside a broader ``face'' category. DB-VAE addresses within-class imbalance by learning the latent structure of the class and inverting that distribution at sample time.
+
+\paragraph{Variational autoencoders.}
+The encoder--decoder structure DB-VAE inherits is the standard variational autoencoder of Kingma and Welling~\cite{kingma2013vae} and Rezende et al.~\cite{rezende2014stochastic}. The novelty in DB-VAE is in how the learned latent variables are used at training time, not in the architecture itself.
+
+\paragraph{Fairness benchmarks for face systems.}
+PPB~\cite{buolamwini2018gendershades} is the canonical benchmark for intersectional facial-analysis bias and uses Fitzpatrick skin type as a proxy for race.
+UTKFace~\cite{zhang2017utkface} provides explicit race and gender labels across five race categories and binary gender, making it particularly well-suited for examining the model's race and gender debiasing capabilities.
+We selected UTKFace specifically because its structured annotations allow us to evaluate performance across 10 intersectional race~$\times$~gender groups, providing finer-grained demographic analysis than the four-bin scheme in the original DB-VAE paper.
+The choice of benchmark substantially affects the difficulty of the underlying task, as we will return to in Section 5.
+
+% =====================================================================
+\section{Methodology}
+% =====================================================================
+
+\subsection{DB-VAE architecture and loss}
+\label{sec:arch}
+
+The DB-VAE shares an encoder with the baseline classifier and adds a
+decoder that mirrors it. For binary classification with~$k$ latent
+variables, the encoder produces~$2k+1$ activations: one classification
+logit~$\hat{y}$, $k$ latent means~$\boldsymbol{\mu}$, and~$k$ latent
+log-standard-deviations~$\log\boldsymbol{\sigma}$. A latent
+sample~$\mathbf{z}$ is drawn via the reparameterization trick
+$\mathbf{z} = \boldsymbol{\mu} + \exp(\log\boldsymbol{\sigma}) \odot
+\boldsymbol{\epsilon}$ with~$\boldsymbol{\epsilon} \sim \mathcal{N}(0, I)$,
+and a decoder reconstructs~$\hat{\mathbf{x}}$ from~$\mathbf{z}$.
+
+The training loss combines classification, reconstruction, and a KL
+regularizer, with the latter two active only for positive (face) examples
+through a face-indicator~$\mathbb{I}_f$:
+\begin{align}
+    \mathcal{L} =\;& \mathrm{BCE}(\hat{y}, y) \nonumber\\
+                   & + \mathbb{I}_f(y) \Bigl[
+                       \|\mathbf{x} - \hat{\mathbf{x}}\|_1 +
+                       c \cdot \tfrac{1}{2}\!\sum_{j} \bigl(\sigma_j + \mu_j^2 - 1 - \log \sigma_j\bigr)
+                     \Bigr],
+    \label{eq:loss}
+\end{align}
+where the first term is classification loss ($\mathcal{L}_y$), the second is reconstruction loss ($\mathcal{L}_x$), and the third is the KL divergence regularizer ($\mathcal{L}_{KL}$), with~$c = 5 \times 10^{-4}$ throughout. The encoder backbone matches the
+baseline CNN (four convolutional blocks of 12, 24, 48, 72 filters with
+batch normalization~\cite{ioffe2015batchnorm}, then a 512-unit dense layer);
+the decoder is its mirror image with transposed convolutions. We
+use~$k = 100$ latent variables, matching Amini et al.~\cite{amini2019dbvae}.
+
+\subsection{A loss-function bug in the MIT lab template}
+\label{sec:bug}
+
+The PyTorch implementation of Equation (1) distributed in the MIT
+6.S191 Lab~2 template -- the most accessible reference implementation of
+DB-VAE -- combines its components as
+\begin{equation}
+    \mathcal{L}_{\text{MIT}} = \mathrm{mean}\bigl(\mathcal{L}_y \cdot \mathbb{I}_f + \mathcal{L}_{\text{VAE}}\bigr),
+    \label{eq:buggy}
+\end{equation}
+swapping the face-indicator factor between the two terms relative to
+Equation (1). Two consequences follow. First, the classification loss
+on non-face examples is multiplied by zero, so the gradient with respect to
+$\hat{y}$ provides no signal to push down probabilities on non-faces.
+Second, the VAE reconstruction and KL losses are evaluated on non-face
+examples (a Tiny ImageNet animal, a vehicle, a piece of furniture), which
+the original method explicitly prohibits.
+
+The combination is sufficient to collapse the trained model into a constant
+predictor that outputs $\sigma(\hat{y}) \approx 1$ on every input. The
+collapse is invisible to any evaluation that uses only face inputs (which
+all standard DB-VAE evaluations do, including the original paper's PPB
+protocol), so the failure can persist undetected across many runs.
+
+We detect the bug by evaluating the trained model on a balanced batch of
+500 faces and 500 non-faces drawn from the same training loader. Before
+the fix, P(face) on non-faces was $1.0000 \pm 0.0000$ (mean over the
+non-face half of the batch) and non-face accuracy was $0.0000$. After
+applying the correction of Equation (1), P(face) on non-faces drops
+to $0.0002$ (max $0.0332$) and non-face accuracy rises to $1.0000$ -- a
+five-thousand-fold change in the diagnostic statistic. All experimental
+results in Section 4.2 use the corrected formulation.
+
+\subsection{Adaptive resampling}
+\label{sec:resample}
+
+At the start of each epoch, the encoder is run over all training faces, and
+the marginal distribution~$\hat{Q}_i(z_i | X)$ of each latent dimension is
+approximated by a 10-bin histogram. The training sampling weight for
+face~$\mathbf{x}$ is
+\begin{equation}
+    \mathcal{W}(\mathbf{z}(\mathbf{x}) | X) \;\propto\;
+    \prod_{i}\;\frac{1}{\hat{Q}_i(z_i(\mathbf{x}) | X) + \alpha},
+    \label{eq:weights}
+\end{equation}
+where the smoothing constant~$\alpha$ controls how aggressively the
+resampling pushes toward uniformity over the latent space.
+As~$\alpha \to 0$ the sampled distribution approaches uniform over the
+latent space; as~$\alpha \to \infty$ it approaches uniform sampling over
+the original training set. We follow Amini et al. in taking the
+element-wise maximum across latent dimensions, which avoids vanishing
+weights when any single dimension exhibits a sharp density spike.
+Algorithm 1 summarizes the procedure.
+
+\begin{algorithm}[t]
+    \caption{DB-VAE training with adaptive resampling}
+    \label{alg:dbvae}
+    \begin{algorithmic}[1]
+        \Require Training set $\{X, Y\}$, batch size $b$, debiasing strength $\alpha$
+        \State Initialize encoder, decoder weights
+        \For{each epoch}
+            \State Compute $\boldsymbol{\mu}_i$ for every face $\mathbf{x}_i \in X$
+            \State Update histograms $\hat{Q}_i(z_i | X)$
+            \State $\mathcal{W}(\mathbf{z}(\mathbf{x}) | X) \gets \prod_{i} \dfrac{1}{\hat{Q}_i(z_i(\mathbf{x}) | X) + \alpha}$
+            \For{each batch}
+                \State Sample faces $\sim \mathcal{W}$, non-faces uniformly
+                \State Forward, compute $\mathcal{L}$ via Equation (1), backpropagate
+                \State Update encoder and decoder parameters
+            \EndFor
+        \EndFor
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Ten-group evaluation protocol}
+\label{sec:eval}
+
+Amini et al.~\cite{amini2019dbvae} report performance over four
+intersectional groups using Fitzpatrick skin type as a race proxy. UTKFace
+ships with five explicit race labels (White, Black, Asian, Indian, Other)
+and a binary gender label, so we report ten intersectional groups:
+\textit{\{race\}~$\times$~\{Female, Male\}}. Two hundred faces per group
+are held out before training and never seen during the latent-distribution
+or weight-update steps. For each group, we report the accuracy at threshold
+0.5 (the fraction of test faces for which $\sigma(\hat{y}) > 0.5$). The
+aggregate metrics follow Amini et al.'s Table~1: $\mathbb{E}[\mathcal{A}]$
+is the mean of the per-group accuracies and $\mathrm{Var}[\mathcal{A}]$
+their population variance.
+
+This protocol differs from the original DB-VAE evaluation in two
+methodologically important ways. First, our test images are pre-cropped
+faces rather than wide-angle parliamentarian photos, so the task is one of
+classification rather than sliding-window detection. Second, our ten-group
+split preserves race information that the four-group skin-tone scheme
+collapses, allowing us to ask whether DB-VAE's effect is uniform across
+race categories within a single skin-tone bin or whether it varies. The
+practical consequence of the first difference -- a substantially easier
+underlying task -- is the central observation of Section 4.2.
+
+% =====================================================================
+\section{Experiments}
+% =====================================================================
+
+\subsection{Datasets and training setup}
+
+We use UTKFace as the positive class: 21{,}705 aligned face crops after
+removing the held-out evaluation set, resized to $64 \times 64$ pixels.
+The negative class is a 25{,}000-image random subsample of Tiny ImageNet
+(125 images per class across 200 generic object classes), also at
+$64 \times 64$. The aggregate training pool is therefore 46{,}705 images,
+roughly balanced between faces and non-faces, contrasting with the
+$400{,}000$-image, CelebA-derived training set used by Amini et al.
+
+All models train with Adam (lr~$=5 \times 10^{-4}$), batch size~32, for ten
+epochs. The DB-VAE uses 100 latent dimensions and a KL weight
+of~$5 \times 10^{-4}$. We sweep~$\alpha \in \{\infty, 0.1, 0.05, 0.01,
+0.001\}$, where~$\alpha = \infty$ denotes the no-debiasing baseline in
+which the resampling step is skipped, and the DB-VAE is trained with uniform
+face sampling. Each~$\alpha$ is run with three random seeds (initial
+weights, batch order, reparameterization noise), and we report the
+mean~$\pm$~SEM (standard error of the mean) across seeds. The full sweep of 15 runs takes approximately
+57~minutes on a single RTX 3060 Laptop GPU.
+
+\subsection{Per-group accuracy}
+\label{sec:results}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.92\textwidth]{c:/Users/Savag/OneDrive/Desktop/capstone_project/report/figures/per_group_accuracy.png}
+    \caption{Per-group accuracy at threshold 0.5 across the ten
+    race~$\times$~gender groups, for the no-debiasing baseline and four
+    DB-VAE conditions. Bars show the mean across three seeds; error bars are
+    one SEM. The y-axis is zoomed to the relevant range to show differences across conditions.}
+    \label{fig:per-group}
+\end{figure*}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.92\textwidth]{c:/Users/Savag/OneDrive/Desktop/capstone_project/report/figures/aggregate_metrics.png}
+    \caption{Aggregate metrics across the $\alpha$-sweep. Mean accuracy $\mathbb{E}[\mathcal{A}]$ (left) and cross-group variance $\mathrm{Var}[\mathcal{A}]$ (right) are plotted as a function of debiasing strength $\alpha$. Error bars represent one SEM across three random seeds. Despite the corrected loss formulation, the $\alpha$-sweep produces no measurable improvement in either metric over the no-debiasing baseline.}
+    \label{fig:aggregate}
+\end{figure*}
+
+\begin{table}[t]
+    \centering
+    \small
+    \caption{Aggregate accuracy and bias on the ten-group held-out test
+    set after applying the loss-function correction of
+    Section 3.2. $\mathbb{E}[\mathcal{A}]$ is the mean and
+    $\mathrm{Var}[\mathcal{A}]$ the population variance of the per-group
+    accuracies. Values are the mean~$\pm$~SEM over three seeds.}
+    \label{tab:agg}
+    \begin{tabular}{lcc}
+        \toprule
+        Condition & $\mathbb{E}[\mathcal{A}]$ & $\mathrm{Var}[\mathcal{A}]\ (\times 10^{-5})$ \\
+        \midrule
+        No debias       & $0.9982 \pm 0.0004$ & $0.875 \pm 0.238$ \\
+        $\alpha = 0.1$  & $0.9980 \pm 0.0003$ & $1.083 \pm 0.030$ \\
+        $\alpha = 0.05$ & $0.9970 \pm 0.0005$ & $1.217 \pm 0.156$ \\
+        $\alpha = 0.01$ & $0.9977 \pm 0.0002$ & $0.950 \pm 0.163$ \\
+        $\alpha = 0.001$& $0.9975 \pm 0.0003$ & $1.275 \pm 0.163$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Figure 1 shows per-group accuracies for
+each~$\alpha$ condition, with the y-axis zoomed to the actual range of
+the data. Table 1 summarizes the aggregate
+$\mathbb{E}[\mathcal{A}]$ and $\mathrm{Var}[\mathcal{A}]$. Three
+observations stand out.
+
+First, the corrected baseline classifier achieves a mean accuracy
+$\mathbb{E}[\mathcal{A}] = 0.9982$ across all ten demographic groups.
+Eight of the ten groups sit at $\geq 99.5\%$ in the no-debias condition,
+the two consistent under-performers are White Male (99.2\%) and Asian Male
+(99.5\%). There is no demographic group on which the baseline exhibits the
+20--30 percentage-point gap that motivated the DB-VAE method on PPB.
+
+Second, the $\alpha$-sweep produces no monotonic trend in either
+$\mathbb{E}[\mathcal{A}]$ or $\mathrm{Var}[\mathcal{A}]$. The differences
+across $\alpha$ values lie within or close to one SEM of the no-debiasing
+baseline. The no-debiasing condition has the highest
+$\mathbb{E}[\mathcal{A}]$ (0.9982) and the lowest
+$\mathrm{Var}[\mathcal{A}]$ ($8.75 \times 10^{-6}$) of any condition,
+though not by a margin that survives the seed-to-seed noise floor. For
+comparison, the Amini et al.\ Table~1 shows $\mathbb{E}[\mathcal{A}]$
+moving from 95.13\% to 97.36\% and $\mathrm{Var}[\mathcal{A}]$ from 28.84
+to 9.43 (in percentage-point units squared) over the same $\alpha$ grid --
+changes orders of magnitude larger than what we observe.
+
+Third, the per-group SEMs are themselves on the order of
+$1.7 \times 10^{-3}$. The within-condition group-to-group differences --
+say, the 99.2\% vs.~99.5\% gap between White Male and Asian Male -- are at
+or below this noise floor. Whatever bias the corrected DB-VAE could, in
+principle, redress on this benchmark, the metric does not give it room to
+move.
+
+\subsection{Why the bug was invisible to standard evaluation}
+
+It is worth noting that the loss-function bug of Section 3.2
+would have been undetectable using only the DB-VAE-vs-Standard-CNN
+comparison plot included in the MIT lab template. That comparison evaluates
+each model on a face-only test set (the 10 race~$\times$~gender groups), and
+a constant ``yes-face'' predictor scores 100\% on a face-only test by
+construction. The diagnostic we propose (Section 3.2) instead
+asks the trained model what probability it assigns to mixed face and
+non-face inputs; this single forward pass reveals the collapse in one
+number. We recommend that any DB-VAE replication include this check.
+
+% =====================================================================
+\section{Discussion}
+\label{sec:discussion}
+% =====================================================================
+
+\subsection{Two interpretations of the saturated null result}
+
+The corrected DB-VAE classifier produces a baseline that is already at
+$\geq 99.2\%$ on every demographic group, and the resampling
+intervention (Equation (2)) does not change this. There are two
+non-exclusive interpretations.
+
+\emph{(1) The task is too easy.} The positive class consists of aligned
+UTKFace crops -- centered, frontal, well-lit -- whereas the original
+DB-VAE experiments evaluated on the Pilot Parliaments Benchmark using a
+sliding-window detection protocol, which introduces variability in pose,
+illumination, and crop framing that the cropped-classification task
+removes. The negative class, Tiny ImageNet, is dissimilar enough from
+faces that the binary boundary is easy to learn. Either change
+individually narrows the gap between baseline accuracy and the ceiling;
+together, they essentially eliminate it.
+
+\emph{(2) The training set is already balanced.} UTKFace's five race
+labels and two genders give a more uniform demographic distribution than
+the heavily light-skinned CelebA used by Amini et al.\ -- with the result
+that the latent-density variation that DB-VAE re-weights against is
+itself smaller. The largest under-representation in our training set is
+about $2 \times$ between the most and least populous race category; the
+analogous CelebA imbalance for dark-skinned subjects is closer to
+$10 \times$.
+
+Either way, Equation (2) re-weights training examples toward
+those whose latent codes are rare. If the classifier already generalizes
+correctly to every demographic group, increasing the representation of any
+subgroup leaves the gradient signal unchanged at convergence: there is no
+group whose loss the resampling could reduce.
+
+\subsection{Implications for practice}
+
+We see the result as a positive contribution to the conditions under
+which DB-VAE is useful, not a refutation of the method. DB-VAE was
+designed for and validated on a setting where the baseline exhibits
+substantial, demographically structured failures (CelebA evaluated on
+PPB). When practitioners adopt the technique, they should first verify
+that such failures exist on their benchmark; otherwise, the resampling
+adds training cost without delivering the benefit it was designed to
+provide.
+
+The bug we describe in Section 3.2 is more directly actionable.
+The MIT 6.S191 Lab~2 template is widely used as an entry point for
+researchers learning DB-VAE, and the failure mode it produces (a constant
+yes-face predictor) is invisible to standard face-only evaluation. Any
+replication of DB-VAE that begins from this template should apply the
+one-line correction and run the mixed-input diagnostic before drawing
+conclusions about $\alpha$.
+
+\subsection{Limitations}
+
+\textit{(i)}~Our training pool is roughly an order of magnitude smaller
+than the $400{,}000$-image set used by Amini et al., which itself bounds
+how extreme the latent-density variation across groups can be.
+\textit{(ii)}~We did not evaluate under test-time perturbation (noise,
+blur, partial occlusion) that would introduce headroom artificially; this
+is a natural follow-up experiment.
+\textit{(iii)}~We did not deliberately bias the training subsample
+(e.g., by subsampling UTKFace down to a 70\%-White-Male composition),
+which would be the cleanest way to recover the regime DB-VAE was designed
+for.
+\textit{(iv)}~Three seeds is fewer than the five used in the original
+paper; we verified post-hoc that the seed-to-seed SEM is small enough
+that this choice does not change the qualitative finding.
+
+% =====================================================================
+\section{Conclusion}
+% =====================================================================
+
+We replicated the DB-VAE adaptive-resampling debiasing method on a new
+dataset combination (UTKFace + Tiny ImageNet) and a finer-grained
+ten-group race~$\times$~gender evaluation. Two findings stand out.
+
+First, the MIT 6.S191 Lab~2 PyTorch template contains a loss-function bug
+that collapses the trained DB-VAE into a constant yes-face predictor; the
+failure is invisible to the standard face-only evaluation and the
+template's own visualization cells. We give a one-line correction matching
+Amini et al.\ Sec.~3.2 and a single-pass diagnostic for detecting the
+collapse.
+
+Second, with the corrected loss, the baseline classifier on UTKFace +
+Tiny ImageNet already achieves 99.8\% mean accuracy across all ten
+demographic groups, and the $\alpha$-sweep that was decisive in the
+original paper produces no measurable effect. We interpret this as a
+characterization of DB-VAE's regime of applicability: the method requires
+latent-density variation across groups that the baseline cannot already
+absorb. Future work should re-evaluate on a deliberately biased training
+subsample of UTKFace or a perturbed test-time protocol -- conditions under which
+the saturated-baseline regime no longer holds. The full pipeline,
+including the local Kaggle-driven data loaders, the bug diagnostic, and
+the corrected sweep harness, is implemented in
+PyTorch~\cite{paszke2019pytorch} and runs end-to-end on a single
+consumer-grade GPU.
+
+% =====================================================================
+\section*{Acknowledgments}
+% =====================================================================
+
+This report was drafted with assistance from AI tools (Grammerly and GitHub Copilot CLI) for writing refinement and formulating the initial LaTeX document code. We gratefully acknowledge Professor Liang Zhao for guiding dataset selection, supervising the experimental design, and providing valuable feedback on the analysis of results. All experimental work, analysis, and research contributions are the author's own.
+
+\section*{References}
+
+{\small
+\bibliographystyle{plain}
+\bibliography{references}
+}
+
+\end{document}

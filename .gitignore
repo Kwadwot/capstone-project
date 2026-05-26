@@ -1,0 +1,70 @@
+# Data directories (large datasets)
+data/
+*.zip
+*.tar.gz
+*.tar
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Model outputs and results
+results/
+*.pth
+*.pt
+*.pkl
+*.pickle
+
+# IDE and environment
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+*.bak
+*.bak2
+*.tmp
+*.log
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Backup/alternate notebooks
+Project_PT_Part2_Debiasing.ipynb
+Project_PT_Part2_Debiasing_Kaggle.ipynb.bak
+Project_PT_Part2_Debiasing_Kaggle.ipynb.bak2
+
+# Temporary scripts
+remove_todos.py
+refactor_notebook.py
+revert_notebook.py
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+secrets/
+
+# OS-specific
+Thumbs.db
+.AppleDouble
+.LSOverride
