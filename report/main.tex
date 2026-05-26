@@ -27,7 +27,7 @@ A Corrected Replication of DB-VAE on UTKFace and Tiny ImageNet}
 \noindent
 As machine learning-based systems become more prevalent, it is important to examine methods to mitigate bias within these systems, especially bias against underrepresented segments of society in training data.
 In this research project, our goal is to evaluate the generalization and applicability of the algorithmic bias mitigation approach designed by MIT researchers (Amini et al., 2019), which combines a variational autoencoder (VAE) with a binary classification task to learn latent features and adaptively re-weight training examples by their rarity in the learned latent space, controlled by a debiasing hyperparameter $\alpha$.
-To examine how well the Debiasing Variational Autoencoder (DB-VAE) algorithm generalizes across dataset compositions, we replicate and extend this method on a different dataset combination: UTKFace (positives) and Tiny ImageNet (negatives), evaluated across a 10-group race~$\times$~gender held-out split.
+To examine how well the Debiasing Variational Autoencoder (DB-VAE) algorithm generalizes across dataset compositions, we replicate and extend this method on a different dataset combination: UTKFace~\cite{zhang2017utkface} (positives) and Tiny ImageNet~\cite{le2015tinyimagenet} (negatives), evaluated across a 10-group race~$\times$~gender held-out split.
 In doing so, we identify and correct a loss-function bug in the widely used MIT 6.S191 Lab~2 template that swaps the face-indicator factor between the classification and VAE terms, zeroing out the classification gradient on non-face training samples.
 We then conduct a comprehensive $\alpha$-sweep over $\{0.001, 0.01, 0.05, 0.1, \infty\}$ across three random seeds.
 Despite the corrected formulation, the baseline classifier achieves $\mathbb{E}[\mathcal{A}] = 0.9982$ across all ten groups, and the $\alpha$-sweep produces no measurable change in either mean accuracy or cross-group variance.
@@ -64,7 +64,7 @@ pushes the sampled distribution toward uniformity over the latent space,
 while~$\alpha \to \infty$ reverts to uniform sampling over the original
 training set.
 
-The original DB-VAE paper demonstrates the method on CelebA and ImageNet,
+The original DB-VAE paper demonstrates the method on CelebA~\cite{liu2015celeba} and ImageNet~\cite{deng2009imagenet},
 evaluated on the Pilot Parliaments Benchmark (PPB)~\cite{buolamwini2018gendershades}
 across four demographic bins (lighter/darker skin, male/female), and
 reports that decreasing~$\alpha$ both increases the mean accuracy and decreases
@@ -254,13 +254,13 @@ underlying task -- is the central observation of Section 4.2.
 
 \subsection{Datasets and training setup}
 
-We use UTKFace as the positive class: 21{,}705 aligned face crops after
+We use UTKFace~\cite{zhang2017utkface} as the positive class: 21{,}705 aligned face crops after
 removing the held-out evaluation set, resized to $64 \times 64$ pixels.
-The negative class is a 25{,}000-image random subsample of Tiny ImageNet
+The negative class is a 25{,}000-image random subsample of Tiny ImageNet~\cite{le2015tinyimagenet}
 (125 images per class across 200 generic object classes), also at
 $64 \times 64$. The aggregate training pool is therefore 46{,}705 images,
 roughly balanced between faces and non-faces, contrasting with the
-$400{,}000$-image, CelebA-derived training set used by Amini et al.
+    $400{,}000$-image, CelebA~\cite{liu2015celeba}-derived training set used by Amini et al.
 
 All models train with Adam (lr~$=5 \times 10^{-4}$), batch size~32, for ten
 epochs. The DB-VAE uses 100 latent dimensions and a KL weight
@@ -382,11 +382,11 @@ together, they essentially eliminate it.
 
 \emph{(2) The training set is already balanced.} UTKFace's five race
 labels and two genders give a more uniform demographic distribution than
-the heavily light-skinned CelebA used by Amini et al.\ -- with the result
+    the heavily light-skinned CelebA~\cite{liu2015celeba} used by Amini et al.\ -- with the result
 that the latent-density variation that DB-VAE re-weights against is
 itself smaller. The largest under-representation in our training set is
 about $2 \times$ between the most and least populous race category; the
-analogous CelebA imbalance for dark-skinned subjects is closer to
+analogous CelebA~\cite{liu2015celeba} imbalance for dark-skinned subjects is closer to
 $10 \times$.
 
 Either way, Equation (2) re-weights training examples toward
@@ -400,7 +400,7 @@ group whose loss the resampling could reduce.
 We see the result as a positive contribution to the conditions under
 which DB-VAE is useful, not a refutation of the method. DB-VAE was
 designed for and validated on a setting where the baseline exhibits
-substantial, demographically structured failures (CelebA evaluated on
+substantial, demographically structured failures (CelebA~\cite{liu2015celeba} evaluated on
 PPB). When practitioners adopt the technique, they should first verify
 that such failures exist on their benchmark; otherwise, the resampling
 adds training cost without delivering the benefit it was designed to
@@ -435,7 +435,7 @@ that this choice does not change the qualitative finding.
 % =====================================================================
 
 We replicated the DB-VAE adaptive-resampling debiasing method on a new
-dataset combination (UTKFace + Tiny ImageNet) and a finer-grained
+dataset combination (UTKFace and Tiny ImageNet) and a finer-grained
 ten-group race~$\times$~gender evaluation. Two findings stand out.
 
 First, the MIT 6.S191 Lab~2 PyTorch template contains a loss-function bug
@@ -445,7 +445,7 @@ template's own visualization cells. We give a one-line correction matching
 Amini et al.\ Sec.~3.2 and a single-pass diagnostic for detecting the
 collapse.
 
-Second, with the corrected loss, the baseline classifier on UTKFace +
+Second, with the corrected loss, the baseline classifier on UTKFace and
 Tiny ImageNet already achieves 99.8\% mean accuracy across all ten
 demographic groups, and the $\alpha$-sweep that was decisive in the
 original paper produces no measurable effect. We interpret this as a
