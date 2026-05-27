@@ -134,17 +134,15 @@ $\mathbf{z} = \boldsymbol{\mu} + \exp(\log\boldsymbol{\sigma}) \odot
 and a decoder reconstructs~$\hat{\mathbf{x}}$ from~$\mathbf{z}$.
 
 The training loss combines classification, reconstruction, and a KL
-regularizer, with the latter two active only for positive (face) examples
-through a face-indicator~$\mathbb{I}_f$:
-\begin{align}
-    \mathcal{L} =\;& \mathrm{BCE}(\hat{y}, y) \nonumber\\
-                   & + \mathbb{I}_f(y) \Bigl[
-                       \|\mathbf{x} - \hat{\mathbf{x}}\|_1 +
-                       c \cdot \tfrac{1}{2}\!\sum_{j} \bigl(\sigma_j + \mu_j^2 - 1 - \log \sigma_j\bigr)
-                     \Bigr],
+regularizer:
+\begin{equation}
+\begin{aligned}
+    \mathcal{L}_{\text{TOTAL}} = {} & c_1 \underbrace{\left[ \sum_{i \in \{0, 1\}} y_i \log \left( \frac{1}{\hat{y}_i} \right) \right]}_{\mathcal{L}_y(y, \hat{y})} + c_2 \underbrace{\left[ \|\mathbf{x} - \hat{\mathbf{x}}\|_p \right]}_{\mathcal{L}_x(\mathbf{x}, \hat{\mathbf{x}})} \\
+                                     & + c_3 \underbrace{\left[ \frac{1}{2} \sum_{j=0}^{k-1} \left( \sigma_j + \mu_j^2 - 1 - \log(\sigma_j) \right) \right]}_{\mathcal{L}_{KL}(\boldsymbol{\mu}, \boldsymbol{\sigma})},
     \label{eq:loss}
-\end{align}
-where the first term is classification loss ($\mathcal{L}_y$), the second is reconstruction loss ($\mathcal{L}_x$), and the third is the KL divergence regularizer ($\mathcal{L}_{KL}$), with~$c = 5 \times 10^{-4}$ throughout. The encoder backbone matches the
+\end{aligned}
+\end{equation}
+where $c_1$, $c_2$, and $c_3$ weight the classification, reconstruction, and KL terms, respectively; in our experiments we set~$c_1 = 1$ and~$c_2 = c_3 = 5 \times 10^{-4}$. The encoder backbone matches the
 baseline CNN (four convolutional blocks of 12, 24, 48, 72 filters with
 batch normalization~\cite{ioffe2015batchnorm}, then a 512-unit dense layer);
 the decoder is its mirror image with transposed convolutions. We
@@ -204,7 +202,7 @@ element-wise maximum across latent dimensions, which avoids vanishing
 weights when any single dimension exhibits a sharp density spike.
 Algorithm 1 summarizes the procedure.
 
-\begin{algorithm}[t]
+\begin{algorithm}[H]
     \caption{DB-VAE training with adaptive resampling}
     \label{alg:dbvae}
     \begin{algorithmic}[1]
@@ -292,7 +290,7 @@ mean~$\pm$~SEM (standard error of the mean) across seeds. The full sweep of 15 r
     \label{fig:aggregate}
 \end{figure*}
 
-\begin{table}[t]
+\begin{table}[H]
     \centering
     \small
     \caption{Aggregate accuracy and bias on the ten-group held-out test
